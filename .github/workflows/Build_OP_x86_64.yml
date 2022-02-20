@@ -106,12 +106,14 @@ jobs:
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
 
-    - name: Build firmware
+    - name: Compile the firmware
+      id: compile
       working-directory: ./openwrt
       run: |
-        echo -e "$(nproc) thread build."
+        echo -e "$(nproc) thread compile"
         make -j$(nproc) V=s
-
+        echo "::set-output name=status::success"
+        
     - name : Upload bin directory
       uses: actions/upload-artifact@master
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
@@ -121,7 +123,7 @@ jobs:
         
     - name: Upload firmware to WeTransfer
       id: wetransfer-bin
-      if: steps.organize.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
+      if: steps.compile.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
       working-directory: ./openwrt
       run: |
         curl -fsSL git.io/file-transfer | sh

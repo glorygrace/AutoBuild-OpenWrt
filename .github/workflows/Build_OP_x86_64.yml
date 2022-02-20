@@ -21,6 +21,7 @@ on:
   #watch:
   #  types: [started]
 env:
+  UPLOAD_BIN_DIR: true
   UPLOAD_FIRMWARE: true
   UPLOAD_COWTRANSFER: false
   UPLOAD_WETRANSFER: true
@@ -111,12 +112,23 @@ jobs:
         echo -e "$(nproc) thread build."
         make -j$(nproc) V=s
 
-    - name : Upload artifact
+    - name : Upload bin directory
       uses: actions/upload-artifact@master
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
-        name: OpenWrt_eSir${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        name: OpenWrt_eSir_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: openwrt/bin
+        
+    - name: Upload firmware to WeTransfer
+      id: wetransfer-bin
+      if: steps.organize.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
+      working-directory: ./openwrt
+      run: |
+        curl -fsSL git.io/file-transfer | sh
+        ./transfer wet -s -p 16 --no-progress ./bin 2>&1 | tee wetransfer.log
+        echo "::warning file=wetransfer.com::$(cat wetransfer.log | grep https)"
+        echo "::set-output name=url::$(cat wetransfer.log | grep https | cut -f3 -d" ")"    
+        
 
   
     - name: Organize files
@@ -127,11 +139,13 @@ jobs:
         rm -rf packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "::set-output name=status::success"
+        
+        
     - name: Upload firmware directory
       uses: actions/upload-artifact@main
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
-        name: OpenWrt_eSir${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        name: OpenWrt_eSir_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE }}
 
     - name: Upload firmware to cowtransfer
@@ -142,6 +156,7 @@ jobs:
         ./transfer cow --block 2621440 -s -p 64 --no-progress ${FIRMWARE} 2>&1 | tee cowtransfer.log
         echo "::warning file=cowtransfer.com::$(cat cowtransfer.log | grep https)"
         echo "::set-output name=url::$(cat cowtransfer.log | grep https | cut -f3 -d" ")"
+    
     - name: Upload firmware to WeTransfer
       id: wetransfer
       if: steps.organize.outputs.status == 'success' && env.UPLOAD_WETRANSFER == 'true' && !cancelled()
